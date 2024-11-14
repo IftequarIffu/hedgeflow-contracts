@@ -12,10 +12,8 @@ contract CreditDefaultSwap {
         uint256 tenureMonths;        // Contract tenure in months
     }
 
-    struct CDSContract {
+    struct BuyerContract {
         address buyer;
-        address seller;
-        uint256 coverageAmount;
         uint256 premiumAmount;
         uint256 monthlyPremiumDueDate;
         uint256 missedPayments;
@@ -23,7 +21,12 @@ contract CreditDefaultSwap {
         bool isDefaulted;
     }
 
-    mapping(address => CDSContract) public cdsContracts;
+    // Seller information
+    mapping(address => CDSSeller) public cdsSellers;
+    // Each seller has a list of buyer contracts
+    mapping(address => mapping(address => BuyerContract)) public buyerContracts;
+    mapping(address => address[]) public sellerBuyers; // Stores buyers of a specific seller
+
     uint256 public constant gracePeriodDays = 7;     // Grace period for premium payment
     uint256 public constant maxMissedPayments = 3;   // Max consecutive missed payments
 
@@ -33,6 +36,7 @@ contract CreditDefaultSwap {
     event ContractTerminated(address indexed buyer, address indexed seller);
     event ContractSold(address indexed seller, uint256 coverageAmount);
 
+    // Register seller with a new CDS contract
     function registerSellerOnPlatform(
         uint256 _coverageAmount,
         uint256 _premiumPercentage,
@@ -40,32 +44,42 @@ contract CreditDefaultSwap {
     ) public {
         require(_premiumPercentage == 10 || _premiumPercentage == 20, "Premium must be 10% or 20%");
         
-        uint256 monthlyPremium = (_coverageAmount * _premiumPercentage) / (100 * _tenureMonths);
-
-        cdsContracts[msg.sender] = CDSContract({
-            buyer: address(0),
+        cdsSellers[msg.sender] = CDSSeller({
             seller: msg.sender,
             coverageAmount: _coverageAmount,
-            premiumAmount: monthlyPremium,
-            monthlyPremiumDueDate: 0,
-            missedPayments: 0,
-            isActive: false,
-            isDefaulted: false
+            premiumPercentage: _premiumPercentage,
+            tenureMonths: _tenureMonths
         });
 
         emit ContractRegistered(msg.sender, _coverageAmount, _premiumPercentage);
     }
 
+    // Allow seller to lock coverage amount in the contract
     function sellCDS() public payable {
-        CDSContract storage contractData = cdsContracts[msg.sender];
-        require(msg.value == contractData.coverageAmount, "Incorrect coverage amount");
-        require(!contractData.isActive, "CDS contract already active");
-        require(contractData.buyer == address(0), "CDS contract already has a buyer");
-
-        // Lock the coverage amount in the smart contract's escrow
-        contractData.coverageAmount = msg.value;
-
+        CDSSeller storage sellerData = cdsSellers[msg.sender];
+        require(msg.value == sellerData.coverageAmount, "Incorrect coverage amount");
+        
         emit ContractSold(msg.sender, msg.value);
+    }
+
+
+    // Buyer initiates a CDS contract with the seller
+    function buyCDS(address _seller) public {
+        CDSSeller storage sellerData = cdsSellers[_seller];
+        require(sellerData.seller != address(0), "Seller not registered");
+        
+        uint256 monthlyPremium = (sellerData.coverageAmount * sellerData.premiumPercentage) / (100 * sellerData.tenureMonths);
+        
+        buyerContracts[_seller][msg.sender] = BuyerContract({
+            buyer: msg.sender,
+            premiumAmount: monthlyPremium,
+            monthlyPremiumDueDate: block.timestamp + 30 days,
+            missedPayments: 0,
+            isActive: true,
+            isDefaulted: false
+        });
+
+        sellerBuyers[_seller].push(msg.sender); // Track each buyer for the seller
     }
 
 
