@@ -33,7 +33,28 @@ contract CreditDefaultSwap {
     event ContractTerminated(address indexed buyer, address indexed seller);
     event ContractSold(address indexed seller, uint256 coverageAmount);
 
-    
+    function registerSellerOnPlatform(
+        uint256 _coverageAmount,
+        uint256 _premiumPercentage,
+        uint256 _tenureMonths
+    ) public {
+        require(_premiumPercentage == 10 || _premiumPercentage == 20, "Premium must be 10% or 20%");
+        
+        uint256 monthlyPremium = (_coverageAmount * _premiumPercentage) / (100 * _tenureMonths);
+
+        cdsContracts[msg.sender] = CDSContract({
+            buyer: address(0),
+            seller: msg.sender,
+            coverageAmount: _coverageAmount,
+            premiumAmount: monthlyPremium,
+            monthlyPremiumDueDate: 0,
+            missedPayments: 0,
+            isActive: false,
+            isDefaulted: false
+        });
+
+        emit ContractRegistered(msg.sender, _coverageAmount, _premiumPercentage);
+    }
 
 
 }
