@@ -115,5 +115,12 @@ contract CreditDefaultSwap {
         }
     }
 
-
+    // Terminate the contract for a specific buyer
+    function terminateContract(address _seller) public {
+        BuyerContract storage buyerData = buyerContracts[_seller][msg.sender];
+        require(buyerData.isActive, "Contract already terminated");
+        
+        buyerData.isActive = false;
+        emit ContractTerminated(msg.sender, _seller);
+    }
 }
