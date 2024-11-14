@@ -56,5 +56,17 @@ contract CreditDefaultSwap {
         emit ContractRegistered(msg.sender, _coverageAmount, _premiumPercentage);
     }
 
+    function sellCDS() public payable {
+        CDSContract storage contractData = cdsContracts[msg.sender];
+        require(msg.value == contractData.coverageAmount, "Incorrect coverage amount");
+        require(!contractData.isActive, "CDS contract already active");
+        require(contractData.buyer == address(0), "CDS contract already has a buyer");
+
+        // Lock the coverage amount in the smart contract's escrow
+        contractData.coverageAmount = msg.value;
+
+        emit ContractSold(msg.sender, msg.value);
+    }
+
 
 }
