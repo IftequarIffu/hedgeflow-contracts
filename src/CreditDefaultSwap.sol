@@ -82,5 +82,38 @@ contract CreditDefaultSwap {
         sellerBuyers[_seller].push(msg.sender); // Track each buyer for the seller
     }
 
+    // Buyer makes a monthly premium payment
+    function payPremium(address _seller) public payable {
+        BuyerContract storage buyerData = buyerContracts[_seller][msg.sender];
+        require(buyerData.isActive, "Contract not active");
+        require(!buyerData.isDefaulted, "Contract in default");
+
+        uint256 currentTimestamp = block.timestamp;
+
+        // Check if the payment is within grace period
+        if (currentTimestamp > buyerData.monthlyPremiumDueDate + gracePeriodDays * 1 days) {
+            buyerData.missedPayments += 1;
+        } else {
+            buyerData.missedPayments = 0; // Reset missed payments if paid on time
+        }
+
+        // Check for contract default
+        if (buyerData.missedPayments >= maxMissedPayments) {
+            buyerData.isActive = false;
+            buyerData.isDefaulted = true;
+            // Release seller's coverage amount in proportion to this buyer's premium
+            payable(_seller).transfer(buyerData.premiumAmount * cdsSellers[_seller].tenureMonths);
+            emit ContractDefaulted(buyerData.buyer, _seller);
+        } else {
+            // Process premium payment
+            require(msg.value == buyerData.premiumAmount, "Incorrect premium amount");
+            payable(_seller).transfer(msg.value);
+            emit PremiumPaid(buyerData.buyer, _seller, msg.value);
+
+            // Update next due date
+            buyerData.monthlyPremiumDueDate += 30 days;
+        }
+    }
+
 
 }
