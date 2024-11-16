@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity 0.8.28;
+pragma solidity ^0.8.20;
 
 
 contract CreditDefaultSwap {
     
     struct CDSSeller {
-        address seller;              // Seller of the CDS contract
+        string sellerName;
+        string contractName;
+        address sellerAddress;              // Seller of the CDS contract
         uint256 coverageAmount;      // Amount in Ether covered by CDS
         uint256 premiumPercentage;   // Premium percentage (10% or 20%)
         uint256 tenureMonths;        // Contract tenure in months
@@ -21,8 +23,11 @@ contract CreditDefaultSwap {
         bool isDefaulted;
     }
 
+    address[] public sellers;
+    address[] public buyers;
+
     // Seller information
-    mapping(address => CDSSeller) public cdsSellers;
+    mapping(address => CDSSeller) public cdsSellerDetails;
     // Each seller has a list of buyer contracts
     mapping(address => mapping(address => BuyerContract)) public buyerContracts;
     mapping(address => address[]) public sellerBuyers; // Stores buyers of a specific seller
@@ -38,25 +43,40 @@ contract CreditDefaultSwap {
 
     // Register seller with a new CDS contract
     function registerSellerOnPlatform(
+        string memory _sellerName,
+        string memory _contractName,
         uint256 _coverageAmount,
         uint256 _premiumPercentage,
         uint256 _tenureMonths
     ) public {
         require(_premiumPercentage == 10 || _premiumPercentage == 20, "Premium must be 10% or 20%");
         
-        cdsSellers[msg.sender] = CDSSeller({
-            seller: msg.sender,
+        cdsSellerDetails[msg.sender] = CDSSeller({
+            sellerName: _sellerName,
+            contractName: _contractName,
+            sellerAddress: msg.sender,
             coverageAmount: _coverageAmount,
             premiumPercentage: _premiumPercentage,
             tenureMonths: _tenureMonths
         });
 
+        sellers.push(payable(msg.sender));
+
         emit ContractRegistered(msg.sender, _coverageAmount, _premiumPercentage);
+    }
+
+    function getAllSellerAddresses() public view returns(address[] memory) {
+        return sellers;
+    }
+
+    function getSellerDetailsFromAddress(address sellerAddress) public view returns(CDSSeller memory) {
+        require(sellerAddress != address(0), "Input address is a Zero Address");
+        return cdsSellerDetails[sellerAddress];
     }
 
     // Allow seller to lock coverage amount in the contract
     function sellCDS() public payable {
-        CDSSeller storage sellerData = cdsSellers[msg.sender];
+        CDSSeller storage sellerData = cdsSellerDetails[msg.sender];
         require(msg.value == sellerData.coverageAmount, "Incorrect coverage amount");
         
         emit ContractSold(msg.sender, msg.value);
@@ -65,8 +85,8 @@ contract CreditDefaultSwap {
 
     // Buyer initiates a CDS contract with the seller
     function buyCDS(address _seller) public {
-        CDSSeller storage sellerData = cdsSellers[_seller];
-        require(sellerData.seller != address(0), "Seller not registered");
+        CDSSeller storage sellerData = cdsSellerDetails[_seller];
+        require(sellerData.sellerAddress != address(0), "Seller not registered");
         
         uint256 monthlyPremium = (sellerData.coverageAmount * sellerData.premiumPercentage) / (100 * sellerData.tenureMonths);
         
@@ -102,7 +122,7 @@ contract CreditDefaultSwap {
             buyerData.isActive = false;
             buyerData.isDefaulted = true;
             // Release seller's coverage amount in proportion to this buyer's premium
-            payable(_seller).transfer(buyerData.premiumAmount * cdsSellers[_seller].tenureMonths);
+            payable(_seller).transfer(buyerData.premiumAmount * cdsSellerDetails[_seller].tenureMonths);
             emit ContractDefaulted(buyerData.buyer, _seller);
         } else {
             // Process premium payment
